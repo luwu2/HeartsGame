@@ -1,3 +1,4 @@
+from copy import deepcopy
 from components.CardProperties import CardProperties
 from models.Card import Card
 from typing import List, Optional
@@ -59,12 +60,18 @@ class Player:
                         continue
 
                 # Play the selected card
-                self.hand.remove(selected_card)
                 return selected_card
 
             except ValueError as e:
                 print(e)
 
-    
+    def copy(self):
+        """Creates a deep copy of the player."""
+        new_player = Player(self.name)
+        new_player.hand = deepcopy(self.hand)  # Ensure a deep copy of the player's hand
+        new_player.takenCards = deepcopy(self.takenCards)
+        new_player.score = self.score  # Score primitive
+        return new_player
+
     def getHand(self) -> List[Card]:
         return self.hand

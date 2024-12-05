@@ -1,18 +1,31 @@
+from copy import deepcopy
+import random
 from typing import List, Optional
-from models.Agent import MCTSAgent
+from components.CardProperties import CardProperties
 from models.Card import Card
 from models.Deck import Deck
 from models.Player import Player
+from models.RandomAgent import RandomPlayer
+
 
 class HeartsGame:
-    def __init__(self, use_mcts_agent: bool = True, simulations: int = 1000):
-        if use_mcts_agent:
-            self.players = [
-                MCTSAgent(f"MCTS Player {i+1}", simulations) if i == 0 else Player(f"Player {i+1}")
-                for i in range(4)
-            ]
-        else:
-            self.players = [Player(f"Player {i+1}") for i in range(4)]
+    def __init__(self, num_mcts_agents, num_random_agents, simulations: int = 1000):
+        # Ensure that the total number of agents is 4
+        if num_mcts_agents + num_random_agents > 4:
+            raise ValueError("The total number of MCTS and Random agents cannot exceed 4.")
+        num_players = 4
+        num_players -= (num_mcts_agents + num_random_agents)  # Fill the rest with standard players
+
+        from models.Agent import MCTSAgent
+        # Initialize players
+        self.players = [
+            MCTSAgent(f"MCTS Player {i+1}", simulations) for i in range(num_mcts_agents)
+        ] + [
+            RandomPlayer(f"Random Player {i+1}") for i in range(num_random_agents)
+        ] + [
+            Player(f"Player {i+1}") for i in range(num_players)
+        ]
+        
         self.deck = Deck()
         self.current_trick: List[Card] = []
         self.lead_suit: Optional[int] = None
@@ -86,21 +99,34 @@ class HeartsGame:
         return 0  # Default to the first player (fallback)
 
     def play_trick(self):
+        from models.Agent import MCTSAgent
         self.current_trick = []
         self.lead_suit = None
         print("\nStarting a new trick!")
-
         for player_index, player in enumerate(self.players):
             if player_index == 0 and self.round_number == 1 and not self.current_trick:
                 # Force the first player to play the 2 of Clubs
                 card = next((card for card in player.hand if card.is_starting_card()), None)
                 if card is None:
                     raise ValueError("The starting card (2 of Clubs) is missing from the player's hand.")
-                player.hand.remove(card)
             else:
                 # Use the player's play_card logic
-                card = player.play_card(self.lead_suit, self.hearts_broken)
+                if isinstance(player, MCTSAgent):
+                    game_copy = self.copy()
+                    # Replace other players with RandomPlayers in the copy
+                    for i, other_player in enumerate(game_copy.players):
+                        if other_player != player:  # Don't replace the MCTSAgent
+                            random_player = RandomPlayer(f"Random Player {i+1}")
+                            random_player.hand = deepcopy(other_player.hand)
+                            random_player.score = other_player.score
+                            game_copy.players[i] = random_player
+                            game_copy.players[i] = random_player 
+                        
+                    card = player.play_card(game_copy)
+                else:
+                    card = player.play_card(self.lead_suit, self.hearts_broken)
 
+            player.hand.remove(card) 
             print(f"{player.name} has played {str(card)}")
             self.current_trick.append(card)
 
@@ -168,14 +194,15 @@ class HeartsGame:
 
     def copy(self):
         """Return a deep copy of the current game state for simulation."""
-        new_game = HeartsGame()
+        new_game = HeartsGame(0, 0)  # Create a blank game instance
         new_game.players = [player.copy() for player in self.players]
-        new_game.current_trick = self.current_trick[:]
+        new_game.current_trick = deepcopy(self.current_trick)
         new_game.lead_suit = self.lead_suit
         new_game.round_number = self.round_number
-        new_game.scores = self.scores[:]
+        new_game.scores = deepcopy(self.scores)  # Ensure scores are copied
         new_game.hearts_broken = self.hearts_broken
         return new_game
+
 
     def play_card(self, player_name: str, card: Card, lead_suit: Optional[int], hearts_broken: bool):
         """
@@ -183,6 +210,8 @@ class HeartsGame:
         """
         for player in self.players:
             if player.name == player_name:
+                if card not in player.hand:
+                    raise ValueError(f"Card {card} not found in {player.name}'s hand: {player.hand}")
                 player.hand.remove(card)
                 self.current_trick.append(card)
                 if lead_suit is None:
@@ -196,4 +225,37 @@ class HeartsGame:
         for player in self.players:
             if player.name == player_name:
                 return -player.calculate_score()  # Lower score is better
+    
+    def print_game_state(self):
+        """Prints the current state of the game."""
+        print(f"\n--- Current Game State ---")
+        
+        # Print round number
+        print(f"Round Number: {self.round_number}")
+        
+        # Print players and their scores
+        print("\nPlayers and Scores:")
+        for player, score in zip(self.players, self.scores):
+            print(f"{player.name}: {score} points")
+        
+        # Print each player's hand
+        print("\nPlayers' Hands:")
+        for player in self.players:
+            print(f"{player.name}'s Hand: {[str(card) for card in player.hand]}")
+
+        # Print hearts_broken status
+        print(f"\nHearts Broken: {self.hearts_broken}")
+
+        # Print the lead suit
+        if self.lead_suit is not None:
+            print(f"Lead Suit: {CardProperties.SUITS[self.lead_suit]}")
+        else:
+            print("Lead Suit: None")
+
+        # Print current trick cards
+        print(f"\nCurrent Trick: {[str(card) for card in self.current_trick]}")
+
+        print(f"\n--- End of Game State ---")
+
+
 
