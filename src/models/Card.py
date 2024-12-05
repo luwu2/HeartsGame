@@ -3,6 +3,7 @@ from typing import List, Optional
 from components.CardProperties import CardProperties
 
 class Card:
+    """Represents a standard playing card"""
     def __init__(self, suit: int, rank: int):
         if not (0 <= suit < len(CardProperties.SUITS)):
             raise ValueError(f"Invalid suit index: {suit}")
@@ -30,3 +31,7 @@ class Card:
         """Check if the card is the Queen of Spades."""
         return self.suit == 3 and self.rank == 10 # suit 3 == "Spades" and rank 10 = 'Q'
 
+    def __eq__(self, other):
+        if isinstance(other, Card):
+            return self.suit == other.suit and self.rank == other.rank
+        return False

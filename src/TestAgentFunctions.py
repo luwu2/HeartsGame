@@ -1,71 +1,60 @@
 import unittest
-from models.Card import Card
-from models.Game import HeartsGame
+from copy import deepcopy
 from models.Agent import MCTSAgent
-
+from models.Game import HeartsGame
+from models.Card import Card
+from models.RandomAgent import RandomPlayer
+from models.Player import Player
 
 class TestMCTSAgent(unittest.TestCase):
     def setUp(self):
-        """Set up the game and MCTS agent."""
-        # Initialize a HeartsGame with 1 MCTS agent and 3 random players
-        self.simulations = 10
-        self.game = HeartsGame(num_mcts_agents=1, num_random_agents=3, simulations=self.simulations)
+        """Set up a Hearts game environment for testing."""
+        self.num_mcts_agents = 1
+        self.num_random_agents = 3
+        self.simulations = 100
+        self.game = HeartsGame(self.num_mcts_agents, self.num_random_agents, self.simulations)
 
-        # Assign the MCTS agent
-        self.agent = next(player for player in self.game.players if isinstance(player, MCTSAgent))  # Assuming the first player is the MCTSAgent
+    def test_get_valid_moves(self):
+        """Test the valid move generation."""
+        mcts_player = next(player for player in self.game.players if isinstance(player, MCTSAgent))
 
-        self.game.hearts_broken = False
-
-    def test_initialization(self):
-        """Test the agent's initialization."""
-        self.assertEqual(self.agent.name, "MCTS Player 1")
-        self.assertEqual(self.agent.iterations, self.simulations)
-        self.assertIs(self.agent.game, self.game)
-        self.assertEqual(len(self.agent.hand), 4)
-
-    def test_get_valid_moves_no_lead_suit(self):
-        """Test the get_valid_moves when there is no lead suit."""
-        valid_moves = self.agent.get_valid_moves(self.game.lead_suit, self.game.hearts_broken)
-        self.assertEqual(len(valid_moves), 4)  # All cards are valid if no lead suit
-
-    def test_get_valid_moves_with_lead_suit(self):
-        """Test the get_valid_moves when there is a lead suit."""
-        self.game.lead_suit = 1  # Diamonds
-        valid_moves = self.agent.get_valid_moves(self.game.lead_suit, self.game.hearts_broken)
-        self.assertEqual(len(valid_moves), 1)  # Only the Diamond card is valid
-
-    def test_run_simulation(self):
-        """Test if the agent can run a simulation and update its tree."""
-        # Simulate a game state
-        self.agent.run_simulation()
-
-        # Check if the tree h1as been updated
-        serialized_state = str(self.game)
-        self.assertIn(serialized_state, self.agent.tree)
-        self.assertGreater(self.agent.tree[serialized_state]["visits"], 0)
+        # Test when there's no lead suit (first play of the round)
+        valid_moves = mcts_player.get_valid_moves(None, False)
+        self.assertEqual(valid_moves, mcts_player.hand, "Any card can be played if there's no lead suit.")
+        
+        # Test when there is a lead suit and player has matching cards
+        valid_moves = mcts_player.get_valid_moves(1, False)
+        for card in valid_moves:
+            self.assertEqual(card.suit, 1)
+       
+    def test_simulation_and_tree_update(self):
+        """Test that simulations run correctly and update the MCTS tree."""
+        mcts_player = next(player for player in self.game.players if isinstance(player, MCTSAgent))
+        initial_tree_size = len(mcts_player.tree)
+        
+        # Run a simulation
+        mcts_player.run_simulation(self.game)
+        self.assertGreater(len(mcts_player.tree), initial_tree_size, "The MCTS tree should be updated after a simulation.")
 
     def test_select_best_move(self):
-        """Test if the agent selects the best move based on the MCTS tree."""
-        # Run multiple simulations
-        for _ in range(self.agent.iterations):
-            self.agent.run_simulation()
-
-        # Select the best move
-        best_move = self.agent.select_best_move()
-        self.assertIn(best_move, self.agent.hand)
+        """Test that the agent selects the best move based on MCTS statistics."""
+        mcts_player = next(player for player in self.game.players if isinstance(player, MCTSAgent))
+        
+        # Mock the MCTS tree to ensure a specific move is chosen
+        mcts_player.tree = {
+            f"{mcts_player.name}-{Card(0, 2)}": {"wins": 10, "visits": 20},
+            f"{mcts_player.name}-{Card(1, 5)}": {"wins": 15, "visits": 15},
+        }
+        mcts_player.hand = [Card(0, 2), Card(1, 5)]
+        best_move = mcts_player.select_best_move()
+        self.assertEqual(best_move, Card(1, 5), "The agent should select the move with the highest win rate.")
 
     def test_game_integration(self):
-        """Test the agent's ability to play within a full game."""
-        # Start a round of the game
-        self.game.start_round()
-
-        # Ensure the game progresses correctly
-        self.assertEqual(len(self.game.scores), 4)  # Scores should be tracked for all players
-        self.assertTrue(any(score > 0 for score in self.game.scores))  # At least one score should change
-
-        # Verify the agent played a card in each trick
+        """Test the integration of MCTSAgent within the game."""
+        self.game.start_round()  # Run a full round
         for player in self.game.players:
-            self.assertEqual(len(player.hand), 0)  # Hands should be empty after a round
+            self.assertEqual(len(player.hand), 0, "All players should have played all cards after a round.")
+        self.assertTrue(any(self.game.scores), "Scores should be updated after a round.")
 
 if __name__ == "__main__":
     unittest.main()

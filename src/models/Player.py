@@ -4,13 +4,14 @@ from models.Card import Card
 from typing import List, Optional
 
 class Player:
+    """Represents a human player and their behaviors"""
     def __init__(self, name: str):
         self.name = name
         self.hand: List[Card] = []
         self.takenCards: List[Card] = []
         self.score = 0
         self.roundScore = 0
-
+        
     def receive_hand(self, hand: List[Card]):
         """Receive a hand of cards."""
         self.hand = hand
@@ -26,12 +27,8 @@ class Player:
         return round_score
 
     def play_card(self, lead_suit: Optional[int], heart_broken: Optional[bool]) -> Card:
-        """
-        Play a card from the player's hand.
-        If lead_suit is None, the player can choose any card.
-        If lead_suit is specified, the player must follow the lead suit if possible.
-        Hearts cannot be led unless they are broken.
-        """
+        """Play a card from the player's hand. Prompts user for input"""
+
         print(f"\n{self.name}'s hand:")
         for idx, card in enumerate(self.hand, start=1):
             print(f"{idx}: {card}")
@@ -75,3 +72,5 @@ class Player:
 
     def getHand(self) -> List[Card]:
         return self.hand
+    
+    

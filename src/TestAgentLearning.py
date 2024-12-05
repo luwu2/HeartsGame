@@ -1,85 +1,61 @@
 import unittest
-import random
-import json
-import matplotlib.pyplot as plt
-from models.Card import Card
+from models.Game import HeartsGame
 from models.Agent import MCTSAgent
 from models.RandomAgent import RandomPlayer
-from models.Player import Player
-from models.Game import HeartsGame  # Assuming HeartsGame is in the models directory
 
 class TestMCTSAgentLearning(unittest.TestCase):
     def setUp(self):
-        """Setup for testing MCTS agent learning in a full game simulation."""
-        self.num_simulations = 1000
-        self.num_mcts_agents = 1  # Number of MCTS agents
-        self.num_random_agents = 3  # Number of random agents
-        self.game = HeartsGame(
-            num_mcts_agents=self.num_mcts_agents,
-            num_random_agents=self.num_random_agents,
-            simulations=self.num_simulations
-        )
+        """Setup the initial conditions for the test suite."""
+        self.num_games = 50  # Number of games to test in each phase
+        self.num_random_agents = 3  # Number of RandomPlayers
+        self.mcts_simulation_counts = [100, 1000]  # Different simulation counts for testing
 
-    def simulate_games(self):
-        """Simulate multiple games and track performance metrics for the MCTS agent."""
-        for player in self.game.players:
-            if isinstance(player, MCTSAgent):
-                mcts_agent = player
-                continue
+    def play_games(self, mcts_simulations, num_games):
+        """Play a specified number of games and return the average scores and win rates for the MCTSAgent."""
+        mcts_agent_wins = 0
+        mcts_agent_scores = []
 
-        # Track the agent's score and wins over each game
-        scores_over_time = []
-        wins_over_time = []
-
-        for game_number in range(1, self.num_simulations + 1):
-            # Start a new round and track the MCTS agent's score
-            self.game.start_round()
-
-            # Get MCTS agent's score and wins
-            mcts_agent_score = self.game.scores[self.game.players.index(mcts_agent)]
-            mcts_agent_wins = mcts_agent.tree.get(
-                json.dumps(mcts_agent.update_tree(mcts_agent), sort_keys=True),
-                {"wins": 0}
-            )["wins"]
+        for _ in range(num_games):
+            # Create a new game with one MCTSAgent and the specified number of RandomPlayers
+            game = HeartsGame(num_mcts_agents=1, num_random_agents=self.num_random_agents, simulations=mcts_simulations)
+            game.hearts_broken = False
+            # Start the game
+            game.start_round()
             
-            # Collect the data for this game
-            scores_over_time.append(mcts_agent_score)
-            wins_over_time.append(mcts_agent_wins)
+            # Find the MCTSAgent in the game
+            mcts_agent = next(player for player in game.players if isinstance(player, MCTSAgent))
+            
+            # Get the MCTSAgent's final score
+            mcts_score = game.scores[game.players.index(mcts_agent)]
+            mcts_agent_scores.append(mcts_score)
+            
+            # Check if the MCTSAgent won the game
+            if mcts_score == min(game.scores):
+                mcts_agent_wins += 1
 
-            print(f"Game {game_number}/{self.num_simulations} - MCTS Score: {mcts_agent_score}, Wins: {mcts_agent_wins}")
+        # Calculate win rate and average score
+        win_rate = mcts_agent_wins / num_games
+        avg_score = sum(mcts_agent_scores) / num_games
+        return win_rate, avg_score
 
-        return scores_over_time, wins_over_time
+    def test_learning_over_simulations(self):
+        """Test whether the MCTSAgent improves with increasing simulation counts."""
+        results = []
 
-    def plot_learning_progress(self, scores_over_time, wins_over_time):
-        """Plot the MCTS agent's learning progress over the games."""
-        # Create a figure with two subplots
-        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8))
+        # Play games with different simulation counts
+        for simulations in self.mcts_simulation_counts:
+            win_rate, avg_score = self.play_games(simulations, self.num_games)
+            results.append((simulations, win_rate, avg_score))
+            print(f"Simulations: {simulations} | Win Rate: {win_rate:.2f} | Avg Score: {avg_score:.2f}")
 
-        # Plot score over time
-        ax1.plot(scores_over_time, label='MCTS Agent Score')
-        ax1.set_title("MCTS Agent Score Over Time")
-        ax1.set_xlabel("Game Number")
-        ax1.set_ylabel("Score")
-        ax1.legend()
+        # Ensure win rate improves and scores decrease (lower is better) with more simulations
+        for i in range(1, len(results)):
+            prev_simulations, prev_win_rate, prev_avg_score = results[i - 1]
+            cur_simulations, cur_win_rate, cur_avg_score = results[i]
 
-        # Plot wins over time
-        ax2.plot(wins_over_time, label='MCTS Agent Wins', color='green')
-        ax2.set_title("MCTS Agent Wins Over Time")
-        ax2.set_xlabel("Game Number")
-        ax2.set_ylabel("Number of Wins")
-        ax2.legend()
-
-        # Show the plots
-        plt.tight_layout()
-        plt.show()
-
-    def test_agent_learning(self):
-        """Simulate 1000 games and track the MCTS agent's learning progress."""
-        # Simulate the games and track the metrics
-        scores_over_time, wins_over_time = self.simulate_games()
-
-        # Plot the agent's learning progress
-        self.plot_learning_progress(scores_over_time, wins_over_time)
+            with self.subTest(f"Testing improvement from {prev_simulations} to {cur_simulations} simulations"):
+                self.assertGreaterEqual(cur_win_rate, prev_win_rate, f"Win rate did not improve from {prev_simulations} to {cur_simulations} simulations.")
+                self.assertLessEqual(cur_avg_score, prev_avg_score, f"Average score did not decrease from {prev_simulations} to {cur_simulations} simulations.")
 
 if __name__ == "__main__":
     unittest.main()

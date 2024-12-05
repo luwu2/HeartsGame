@@ -7,17 +7,17 @@ from models.Deck import Deck
 from models.Player import Player
 from models.RandomAgent import RandomPlayer
 
-
 class HeartsGame:
+    """Interpretation of the classic card game Hearts"""
     def __init__(self, num_mcts_agents, num_random_agents, simulations: int = 1000):
         # Ensure that the total number of agents is 4
         if num_mcts_agents + num_random_agents > 4:
             raise ValueError("The total number of MCTS and Random agents cannot exceed 4.")
         num_players = 4
-        num_players -= (num_mcts_agents + num_random_agents)  # Fill the rest with standard players
+        num_players -= (num_mcts_agents + num_random_agents)  # Fill the rest with human players
 
         from models.Agent import MCTSAgent
-        # Initialize players
+        # Initializes players, MCTS agent first
         self.players = [
             MCTSAgent(f"MCTS Player {i+1}", simulations) for i in range(num_mcts_agents)
         ] + [
@@ -31,7 +31,7 @@ class HeartsGame:
         self.lead_suit: Optional[int] = None
         self.round_number = 0
         self.scores = [0] * 4  # Initialize scores for each player
-        self.hearts_broken = False  # Initially, hearts cannot be led
+        self.hearts_broken = False 
 
     def get_pass_direction(self) -> Optional[int]:
         """Determine the pass direction based on the round number."""
@@ -59,10 +59,11 @@ class HeartsGame:
             player.hand.extend(passed_cards[recipient_index])
 
     def start_round(self):
+        """Start a new round, deal cards, pass cards, and play tricks."""
         for player in self.players:
             player.takenCards = []
 
-        """Start a new round, deal cards, pass cards, and play tricks."""
+       
         self.round_number += 1
         print(f"\nStarting Round {self.round_number}.")
         
@@ -86,6 +87,7 @@ class HeartsGame:
         for trick_number in range(1, 14):
             self.round_number = trick_number
             print(f"\n--- Trick {trick_number} ---")
+            # Calls play_trick
             self.play_trick()
 
         # Update scores at the end of the round
@@ -96,11 +98,12 @@ class HeartsGame:
         for i, player in enumerate(self.players):
             if any(card.is_starting_card() for card in player.hand):
                 return i
-        return 0  # Default to the first player (fallback)
-
+        return 0
+    
     def play_trick(self):
+        """Facilitates playing 1 trick"""
         from models.Agent import MCTSAgent
-        self.current_trick = []
+        self.current_trick = [] # Saves taken cards
         self.lead_suit = None
         print("\nStarting a new trick!")
         for player_index, player in enumerate(self.players):
@@ -116,20 +119,20 @@ class HeartsGame:
                     # Replace other players with RandomPlayers in the copy
                     for i, other_player in enumerate(game_copy.players):
                         if other_player != player:  # Don't replace the MCTSAgent
-                            random_player = RandomPlayer(f"Random Player {i+1}")
-                            random_player.hand = deepcopy(other_player.hand)
-                            random_player.score = other_player.score
+                            random_player = other_player.copy()
                             game_copy.players[i] = random_player
-                            game_copy.players[i] = random_player 
                         
+                    # MCTS agent needs a copy of game state to simulate 
                     card = player.play_card(game_copy)
                 else:
+                    # Other agents can just use their play_card
                     card = player.play_card(self.lead_suit, self.hearts_broken)
 
+            # Adjust hand for players and append the card to trick
             player.hand.remove(card) 
-            print(f"{player.name} has played {str(card)}")
             self.current_trick.append(card)
 
+            # Set card as lead suit
             if self.lead_suit is None:
                 self.lead_suit = card.suit
 
@@ -144,6 +147,8 @@ class HeartsGame:
         for player in self.players:
             if player == trick_winner:
                 player.takenCards.extend(self.current_trick)
+        
+        self.update_scores()
 
         # Rotate players so the winner of this trick leads the next
         self.players = self.players[trick_winner_index:] + self.players[:trick_winner_index]
@@ -159,7 +164,6 @@ class HeartsGame:
         return self.current_trick.index(winning_card)
 
     def update_scores(self):
-
         """Update scores at the end of a round."""
         round_scores = [0] * len(self.players)
         for i, player in enumerate(self.players):
@@ -194,6 +198,8 @@ class HeartsGame:
 
     def copy(self):
         """Return a deep copy of the current game state for simulation."""
+
+        # Critical for allowing the MCTS agent to work
         new_game = HeartsGame(0, 0)  # Create a blank game instance
         new_game.players = [player.copy() for player in self.players]
         new_game.current_trick = deepcopy(self.current_trick)
@@ -205,23 +211,45 @@ class HeartsGame:
 
 
     def play_card(self, player_name: str, card: Card, lead_suit: Optional[int], hearts_broken: bool):
-        """
-        Simulate a player playing a card in the game state.
-        """
+        """Simulate a player playing a card in the game state and update the game state accordingly."""
+        # Find the player and ensure the card is in their hand
         for player in self.players:
             if player.name == player_name:
                 if card not in player.hand:
                     raise ValueError(f"Card {card} not found in {player.name}'s hand: {player.hand}")
+            
+                # Remove the card from the player's hand
                 player.hand.remove(card)
+
+                # Add the card to the current trick
                 self.current_trick.append(card)
+            
+                # Set the lead suit if it's the first card played
                 if lead_suit is None:
                     self.lead_suit = card.suit
+
+                # Check if the hearts or the Queen of Spades was played, to update the hearts_broken flag
+                if card.is_heart() or card.is_queen_of_spades():
+                    self.hearts_broken = True
+
                 break
 
+        if len(self.current_trick) == 4:  # All players have played a card
+            # Determine the winner of the trick
+            trick_winner = self.determine_trick_winner()
+            # The winner of the trick adds the cards to their takenCards pile
+            self.players[trick_winner].takenCards.extend(self.current_trick)
+            # Reset for the next trick
+            self.current_trick = []
+            self.lead_suit = None  # Reset lead suit for the next trick
+
+            # Update the players for the next round of the game
+            self.players = self.players[trick_winner:] + self.players[:trick_winner]
+
+
+
     def evaluate_player_score(self, player_name: str) -> float:
-        """
-        Estimate a player's score for the current game state.
-        """
+        """Estimate a player's score for the current game state."""
         for player in self.players:
             if player.name == player_name:
                 return -player.calculate_score()  # Lower score is better
