@@ -1,5 +1,4 @@
 from copy import deepcopy
-import random
 from typing import List, Optional
 from components.CardProperties import CardProperties
 from models.Card import Card
